@@ -2,6 +2,9 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Install espeak-ng for local TTS (no API key required)
+RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first (better caching)
 COPY package*.json ./
 RUN npm install --production

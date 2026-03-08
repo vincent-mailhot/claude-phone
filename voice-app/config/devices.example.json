@@ -1,0 +1,10 @@
+{
+  "14513": {
+    "name": "AlertServer",
+    "extension": "14513",
+    "authId": "14513",
+    "password": "your-extension-password-here",
+    "voiceId": null,
+    "prompt": null
+  }
+}

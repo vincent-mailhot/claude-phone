@@ -57,13 +57,16 @@ async function initiateOutboundCall(srf, mediaServer, options) {
     // Internal extensions: dial as-is. External (E.164 with +): add 9 prefix for PSTN
     const isExternal = to.startsWith('+');
     const phoneNumber = isExternal ? '9' + to.replace(/^\+1?/, '') : to;
-    const sipTrunkHost = process.env.SIP_TRUNK_HOST || '10.70.7.50';
-    const externalIp = process.env.EXTERNAL_IP || '10.70.7.81';
-    const defaultCallerId = callerId || process.env.DEFAULT_CALLER_ID || '+15551234567';
+    const sipTrunkHost = process.env.SIP_REGISTRAR || process.env.SIP_TRUNK_HOST;
+    if (!sipTrunkHost) {
+      throw new Error('SIP_REGISTRAR is not configured. Set it in your .env file.');
+    }
+    const externalIp = process.env.EXTERNAL_IP || '127.0.0.1';
+    const defaultCallerId = callerId || process.env.DEFAULT_CALLER_ID || process.env.SIP_EXTENSION;
 
-    // SIP Authentication for 3CX extension registration
-    const sipAuthUsername = process.env.SIP_AUTH_USERNAME;
-    const sipAuthPassword = process.env.SIP_AUTH_PASSWORD;
+    // SIP Authentication for 3CX — prefer SIP_PASSWORD, fall back to SIP_AUTH_PASSWORD
+    const sipAuthUsername = process.env.SIP_AUTH_ID || process.env.SIP_AUTH_USERNAME;
+    const sipAuthPassword = process.env.SIP_PASSWORD || process.env.SIP_AUTH_PASSWORD;
 
     const sipUri = 'sip:' + phoneNumber + '@' + sipTrunkHost;
 
