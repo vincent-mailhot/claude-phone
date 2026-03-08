@@ -38,12 +38,33 @@ class DeviceRegistry {
   }
 
   /**
-   * Load devices from config file
+   * Load devices from config file, falling back to environment variables
    */
   load() {
     try {
       if (!fs.existsSync(CONFIG_PATH)) {
-        logger.warn('Device config not found, using Morpheus default only', {
+        // Try to build device config from environment variables
+        const envExtension = process.env.SIP_EXTENSION;
+        const envAuthId    = process.env.SIP_AUTH_ID;
+        const envPassword  = process.env.SIP_PASSWORD;
+
+        if (envExtension && envAuthId && envPassword) {
+          const envDevice = {
+            name: 'AlertServer',
+            extension: envExtension,
+            authId: envAuthId,
+            password: envPassword,
+            voiceId: null,
+            prompt: null
+          };
+          this.devices = { [envExtension]: envDevice };
+          this.devicesByName = { alertserver: envDevice };
+          this.loaded = true;
+          logger.info('Device config loaded from environment variables', { extension: envExtension });
+          return;
+        }
+
+        logger.warn('Device config not found and no SIP_EXTENSION/SIP_AUTH_ID/SIP_PASSWORD set; using default', {
           path: CONFIG_PATH
         });
         this.devices = {

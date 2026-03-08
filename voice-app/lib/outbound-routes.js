@@ -90,6 +90,108 @@ function validateRequest(body) {
 }
 
 /**
+ * POST /api/alert
+ * Convenience endpoint — calls ALERT_TARGET_EXTENSION with a text message.
+ * Uses announce mode: plays the message once and hangs up.
+ *
+ * Body parameters:
+ *   - message: Text to speak (required)
+ *   - target:  Override the destination extension (optional)
+ */
+router.post('/alert', async function(req, res) {
+  var body = req.body || {};
+  var message = body.message;
+  var target  = body.target || process.env.ALERT_TARGET_EXTENSION;
+
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'validation_failed',
+      message: 'Field "message" is required and must be a non-empty string'
+    });
+  }
+
+  if (message.length > 1000) {
+    return res.status(400).json({
+      success: false,
+      error: 'validation_failed',
+      message: 'Field "message" must be 1000 characters or less'
+    });
+  }
+
+  if (!target) {
+    return res.status(400).json({
+      success: false,
+      error: 'config_error',
+      message: 'No alert target configured. Set ALERT_TARGET_EXTENSION in .env or pass "target" in the request body.'
+    });
+  }
+
+  if (!srf || !mediaServer) {
+    return res.status(503).json({
+      success: false,
+      error: 'service_unavailable',
+      message: 'Voice infrastructure is not ready'
+    });
+  }
+
+  // Resolve device config using SIP_EXTENSION as the outbound identity
+  var deviceConfig = deviceRegistry
+    ? deviceRegistry.get(process.env.SIP_EXTENSION)
+    : null;
+
+  var session = new OutboundSession(null, {
+    to: target,
+    message: message,
+    mode: 'announce',
+    device: deviceConfig ? deviceConfig.name : null
+  });
+
+  logger.info('Alert call requested', {
+    callId: session.callId,
+    target: target,
+    messageLength: message.length,
+    device: deviceConfig ? deviceConfig.name : 'default'
+  });
+
+  res.json({
+    success: true,
+    callId: session.callId,
+    status: 'queued',
+    message: 'Alert call initiated',
+    target: target
+  });
+
+  // Fire and forget
+  (async function() {
+    try {
+      session.transition('DIALING');
+
+      var result = await initiateOutboundCall(srf, mediaServer, {
+        to: target,
+        message: message,
+        timeoutSeconds: (parseInt(process.env.OUTBOUND_RING_TIMEOUT, 10) || 30),
+        deviceConfig: deviceConfig
+      });
+
+      session.setDialog(result.dialog);
+      session.setEndpoint(result.endpoint);
+      session.transition('PLAYING');
+
+      var voiceId = deviceConfig && deviceConfig.voiceId ? deviceConfig.voiceId : null;
+      await playMessage(result.endpoint, message, { voiceId: voiceId });
+
+      await hangupCall(result.dialog, result.endpoint, session.callId);
+      session.transition('COMPLETED', 'alert_complete');
+
+    } catch (error) {
+      logger.error('Alert call failed', { callId: session.callId, error: error.message });
+      session.transition('FAILED', error.message);
+    }
+  })();
+});
+
+/**
  * POST /api/outbound-call
  * Initiate an outbound call
  *
